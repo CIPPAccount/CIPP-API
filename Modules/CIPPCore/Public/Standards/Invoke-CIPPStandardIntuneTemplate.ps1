@@ -16,14 +16,15 @@ function Invoke-CIPPStandardIntuneTemplate {
                 $Table = Get-CippTable -tablename 'templates'
                 $Filter = "PartitionKey eq 'IntuneTemplate'"
                 $Request = @{body = $null }
-                $Request.body = (Get-AzDataTableEntity @Table -Filter $Filter | Where-Object -Property RowKey -Like "$($template.value)*").JSON | ConvertFrom-Json
+                $Request.body = (Get-CIPPAzDataTableEntity @Table -Filter $Filter | Where-Object -Property RowKey -Like "$($template.value)*").JSON | ConvertFrom-Json
                 $displayname = $request.body.Displayname
                 $description = $request.body.Description
                 $RawJSON = $Request.body.RawJSON
+                $TemplateTypeURL = $Request.body.Type
 
-                Set-CIPPIntunePolicy -TemplateType $Request.body.Type -Description $description -DisplayName $displayname -RawJSON $RawJSON -AssignTo $null -tenantFilter $Tenant
+                Set-CIPPIntunePolicy -TemplateType $Request.body.Type -Description $description -DisplayName $displayname -RawJSON $RawJSON -AssignTo $Template.AssignedTo -tenantFilter $Tenant
 
-                #Legacy assign.
+                #Legacy assign, only required for older templates.
                 if ($Settings.AssignTo) {
                     Write-Host "Assigning Policy to $($Settings.AssignTo) the create ID is $($CreateRequest)"
                     if ($Settings.AssignTo -eq 'customGroup') { $Settings.AssignTo = $Settings.customGroup }
@@ -36,16 +37,6 @@ function Invoke-CIPPStandardIntuneTemplate {
                     }
                 }
 
-                if ($Template.AssignedTo) {
-                    Write-Host "New: Assigning Policy to $($Template.AssignedTo) the create ID is $($CreateRequest)"
-                    if ($ExistingID) {
-                        Set-CIPPAssignedPolicy -PolicyId $ExistingID.id -TenantFilter $tenant -GroupName $Template.AssignedTo -Type $TemplateTypeURL
-                        Write-LogMessage -API 'Standards' -tenant $tenant -message "Successfully updated Intune Template $PolicyName policy for $($Tenant)" -sev 'Info'
-                    } else {
-                        Set-CIPPAssignedPolicy -PolicyId $CreateRequest.id -TenantFilter $tenant -GroupName $Template.AssignedTo -Type $TemplateTypeURL
-                        Write-LogMessage -API 'Standards' -tenant $tenant -message "Successfully created Intune Template $PolicyName policy for $($Tenant)" -sev 'Info'
-                    }
-                }
             } catch {
                 $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
                 Write-LogMessage -API 'Standards' -tenant $tenant -message "Failed to create or update Intune Template $PolicyName, Error: $ErrorMessage" -sev 'Error'
