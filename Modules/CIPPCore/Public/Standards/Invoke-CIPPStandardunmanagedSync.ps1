@@ -30,10 +30,23 @@ function Invoke-CIPPStandardunmanagedSync {
     #>
 
     param($Tenant, $Settings)
-    Test-CIPPStandardLicense -StandardName 'unmanagedSync' -TenantFilter $Tenant -RequiredCapabilities @('INTUNE_A', 'MDM_Services', 'EMS', 'SCCM', 'MICROSOFTINTUNEPLAN1')
+    $TestResult = Test-CIPPStandardLicense -StandardName 'unmanagedSync' -TenantFilter $Tenant -RequiredCapabilities @('INTUNE_A', 'MDM_Services', 'EMS', 'SCCM', 'MICROSOFTINTUNEPLAN1')
     ##$Rerun -Type Standard -Tenant $Tenant -Settings $Settings 'unmanagedSync'
 
-    $CurrentState = Get-CIPPSPOTenant -TenantFilter $Tenant | Select-Object _ObjectIdentity_, TenantFilter, ConditionalAccessPolicy
+    if ($TestResult -eq $false) {
+        Write-Host "We're exiting as the correct license is not present for this standard."
+        return $true
+    } #we're done.
+
+    try {
+        $CurrentState = Get-CIPPSPOTenant -TenantFilter $Tenant |
+        Select-Object _ObjectIdentity_, TenantFilter, ConditionalAccessPolicy
+    }
+    catch {
+        $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
+        Write-LogMessage -API 'Standards' -Tenant $Tenant -Message "Could not get the unmanagedSync state for $Tenant. Error: $ErrorMessage" -Sev Error
+        return
+    }
 
     $WantedState = [int]($Settings.state.value ?? 2) # Default to 2 (Block Access) if not set, for pre v8.0.3 standard compatibility
     $Label = $Settings.state.label ?? 'Block Access' # Default label if not set, for pre v8.0.3 standard compatibility

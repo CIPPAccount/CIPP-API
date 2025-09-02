@@ -30,7 +30,12 @@ function Invoke-CIPPStandardMailboxRecipientLimits {
     #>
 
     param($Tenant, $Settings)
-    Test-CIPPStandardLicense -StandardName 'MailboxRecipientLimits' -TenantFilter $Tenant -RequiredCapabilities @('EXCHANGE_S_STANDARD', 'EXCHANGE_S_ENTERPRISE', 'EXCHANGE_LITE') #No Foundation because that does not allow powershell access
+    $TestResult = Test-CIPPStandardLicense -StandardName 'MailboxRecipientLimits' -TenantFilter $Tenant -RequiredCapabilities @('EXCHANGE_S_STANDARD', 'EXCHANGE_S_ENTERPRISE', 'EXCHANGE_LITE') #No Foundation because that does not allow powershell access
+
+    if ($TestResult -eq $false) {
+        Write-Host "We're exiting as the correct license is not present for this standard."
+        return $true
+    } #we're done.
 
     # Input validation
     if ([Int32]$Settings.RecipientLimit -lt 0 -or [Int32]$Settings.RecipientLimit -gt 10000) {
@@ -39,7 +44,14 @@ function Invoke-CIPPStandardMailboxRecipientLimits {
     }
 
     # Get mailbox plans first
-    $MailboxPlans = New-ExoRequest -tenantid $Tenant -cmdlet 'Get-MailboxPlan' -cmdParams @{ ResultSize = 'Unlimited' }
+    try {
+        $MailboxPlans = New-ExoRequest -tenantid $Tenant -cmdlet 'Get-MailboxPlan' -cmdParams @{ ResultSize = 'Unlimited' }
+    }
+    catch {
+        $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
+        Write-LogMessage -API 'Standards' -Tenant $Tenant -Message "Could not get the MailboxRecipientLimits state for $Tenant. Error: $ErrorMessage" -Sev Error
+        return
+    }
 
     # Create a hashtable of mailbox plans for quick lookup
     $MailboxPlanLookup = @{}

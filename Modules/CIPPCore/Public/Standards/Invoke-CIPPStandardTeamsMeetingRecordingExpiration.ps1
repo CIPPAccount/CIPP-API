@@ -30,16 +30,29 @@ function Invoke-CIPPStandardTeamsMeetingRecordingExpiration {
     ##$Rerun -Type Standard -Tenant $Tenant -Settings $Settings 'TeamsMeetingRecordingExpiration'
 
     param($Tenant, $Settings)
-    Test-CIPPStandardLicense -StandardName 'TeamsMeetingRecordingExpiration' -TenantFilter $Tenant -RequiredCapabilities @('MCOSTANDARD', 'MCOEV', 'MCOIMP', 'TEAMS1','Teams_Room_Standard')
+    $TestResult = Test-CIPPStandardLicense -StandardName 'TeamsMeetingRecordingExpiration' -TenantFilter $Tenant -RequiredCapabilities @('MCOSTANDARD', 'MCOEV', 'MCOIMP', 'TEAMS1','Teams_Room_Standard')
 
     # Input validation
+
+    if ($TestResult -eq $false) {
+        Write-Host "We're exiting as the correct license is not present for this standard."
+        return $true
+    } #we're done.
     $ExpirationDays = try { [int64]$Settings.ExpirationDays } catch { Write-Warning "Invalid ExpirationDays value provided: $($Settings.ExpirationDays)"; return }
     if (($ExpirationDays -ne -1) -and ($ExpirationDays -lt 1 -or $ExpirationDays -gt 99999)) {
         Write-LogMessage -API 'Standards' -tenant $Tenant -message "Invalid ExpirationDays value: $ExpirationDays. Must be -1 (Never Expire) or between 1 and 99999." -sev Error
         return
     }
 
-    $CurrentExpirationDays = (New-TeamsRequest -TenantFilter $Tenant -Cmdlet 'Get-CsTeamsMeetingPolicy' -CmdParams @{Identity = 'Global' }).NewMeetingRecordingExpirationDays
+    try {
+        $CurrentExpirationDays = (New-TeamsRequest -TenantFilter $Tenant -Cmdlet 'Get-CsTeamsMeetingPolicy' -CmdParams @{Identity = 'Global' }).NewMeetingRecordingExpirationDays
+    }
+    catch {
+        $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
+        Write-LogMessage -API 'Standards' -Tenant $Tenant -Message "Could not get the TeamsMeetingRecordingExpiration state for $Tenant. Error: $ErrorMessage" -Sev Error
+        return
+    }
+
     $StateIsCorrect = if ($CurrentExpirationDays -eq $ExpirationDays) { $true } else { $false }
 
     if ($Settings.remediate -eq $true) {
